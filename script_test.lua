@@ -1,123 +1,100 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
 
-local player = Players.LocalPlayer
-local carryEvent = ReplicatedStorage:WaitForChild("CarryPlayerEvent", 5)
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local camera = workspace.CurrentCamera
 
--- Настройки полёта
-local isFlying = false
-local flySpeed = 50
-local linearVelocity = nil
-local attachment = nil
+local flying = false
+local speed = 50
 
---------------------------------------------------------------------------------
--- СОЗДАНИЕ ИНТЕРФЕЙСА (GUI) ДЛЯ ТЕЛЕФОНА
---------------------------------------------------------------------------------
+local bodyVelocity = nil
+local bodyGyro = nil
+
+-- Обновление персонажа при респавне
+localPlayer.CharacterAdded:Connect(function(newChar)
+	character = newChar
+	hrp = character:WaitForChild("HumanoidRootPart")
+	flying = false
+	if bodyVelocity then bodyVelocity:Destroy() end
+	if bodyGyro then bodyGyro:Destroy() end
+end)
+
+-- Создание GUI элементов для телефона
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "MobileControlsGui"
+screenGui.Name = "FlyGui"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
 
--- Кнопка ПОЛЁТА
-local flyButton = Instance.new("TextButton")
-flyButton.Name = "FlyButton"
-flyButton.Size = UDim2.new(0, 100, 0, 50)
-flyButton.Position = UDim2.new(0.8, -110, 0.7, 0)
-flyButton.Text = "ПОЛЁТ: ВЫКЛ"
-flyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-flyButton.TextSize = 14
-flyButton.Font = Enum.Font.SourceSansBold
-flyButton.Parent = screenGui
+if gethui then
+	screenGui.Parent = gethui()
+elseif CoreGui:FindFirstChild("FlyGui") then
+	CoreGui.FlyGui:Destroy()
+	screenGui.Parent = CoreGui
+else
+	screenGui.Parent = CoreGui
+end
 
-local flyCorner = Instance.new("UICorner")
-flyCorner.CornerRadius = UDim.new(0, 10)
-flyCorner.Parent = flyButton
+local btnFly = Instance.new("TextButton")
+btnFly.Size = UDim2.new(0, 130, 0, 50)
+btnFly.Position = UDim2.new(0.02, 0, 0.45, 0)
+btnFly.BackgroundColor3 = Color3.fromRGB(0, 150, 75)
+btnFly.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnFly.TextSize = 16
+btnFly.Font = Enum.Font.SourceSansBold
+btnFly.Text = "🚀 Включить Флай"
+btnFly.Parent = screenGui
 
--- Кнопка ПОДБОРА ИГРОКА
-local carryButton = Instance.new("TextButton")
-carryButton.Name = "CarryButton"
-carryButton.Size = UDim2.new(0, 100, 0, 50)
-carryButton.Position = UDim2.new(0.8, 0, 0.7, 0)
-carryButton.Text = "ВЗЯТЬ"
-carryButton.BackgroundColor3 = Color3.fromRGB(50, 150, 250)
-carryButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-carryButton.TextSize = 14
-carryButton.Font = Enum.Font.SourceSansBold
-carryButton.Parent = screenGui
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 10)
+corner.Parent = btnFly
 
-local carryCorner = Instance.new("UICorner")
-carryCorner.CornerRadius = UDim.new(0, 10)
-carryCorner.Parent = carryButton
-
---------------------------------------------------------------------------------
--- ЛОГИКА ПОЛЁТА И ПОДБОРА
---------------------------------------------------------------------------------
-
+-- Включение / Выключение полета
 local function toggleFly()
-	local character = player.Character
-	if not character then return end
-	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-	if not humanoidRootPart then return end
-
-	isFlying = not isFlying
+	flying = not flying
 	
-	if isFlying then
-		flyButton.Text = "ПОЛЁТ: ВКЛ"
-		flyButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+	if flying then
+		btnFly.Text = "❌ Выключить Флай"
+		btnFly.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 		
-		attachment = Instance.new("Attachment")
-		attachment.Parent = humanoidRootPart
+		bodyVelocity = Instance.new("BodyVelocity")
+		bodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+		bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+		bodyVelocity.Parent = hrp
 		
-		linearVelocity = Instance.new("LinearVelocity")
-		linearVelocity.Attachment0 = attachment
-		linearVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-		linearVelocity.VectorVelocity = Vector3.zero
-		linearVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
-		linearVelocity.Parent = humanoidRootPart
+		bodyGyro = Instance.new("BodyGyro")
+		bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+		bodyGyro.CFrame = hrp.CFrame
+		bodyGyro.Parent = hrp
 	else
-		flyButton.Text = "ПОЛЁТ: ВЫКЛ"
-		flyButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+		btnFly.Text = "🚀 Включить Флай"
+		btnFly.BackgroundColor3 = Color3.fromRGB(0, 150, 75)
 		
-		if linearVelocity then linearVelocity:Destroy() end
-		if attachment then attachment:Destroy() end
+		if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+		if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
 	end
 end
 
--- Нажатие на кнопку Полёт
-flyButton.MouseButton1Click:Connect(toggleFly)
+btnFly.MouseButton1Click:Connect(toggleFly)
 
--- Нажатие на кнопку Взять / Отпустить
-carryButton.MouseButton1Click:Connect(function()
-	local character = player.Character
-	if not character then return end
-	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-	if not humanoidRootPart then return end
-
-	local closestPlayer = nil
-	local shortestDistance = 12 -- Максимальная дистанция для подбора (в стюдах)
-	
-	for _, otherPlayer in ipairs(Players:GetPlayers()) do
-		if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
-			local dist = (otherPlayer.Character.HumanoidRootPart.Position - humanoidRootPart.Position).Magnitude
-			if dist < shortestDistance then
-				shortestDistance = dist
-				closestPlayer = otherPlayer
+-- Управление полетом по направлению камеры
+RunService.RenderStepped:Connect(function()
+	if flying and hrp and bodyVelocity and bodyGyro then
+		-- Направляем тело персонажа туда, куда смотрит камера
+		bodyGyro.CFrame = camera.CFrame
+		
+		-- Берем движение с джойстика/кнопок персонажа
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			local moveDirection = humanoid.MoveDirection
+			if moveDirection.Magnitude > 0 then
+				-- Летим в сторону движения джойстика относительно камеры
+				local flyVector = camera.CFrame:VectorToWorldSpace(CFrame.new(moveDirection).LookVector)
+				bodyVelocity.Velocity = camera.CFrame.LookVector * (moveDirection.Magnitude * speed)
+			else
+				bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 			end
 		end
-	end
-	
-	if closestPlayer and carryEvent then
-		carryEvent:FireServer(closestPlayer)
-	end
-end)
-
--- Полет по направлению камеры при включённом режиме
-RunService.RenderStepped:Connect(function()
-	if isFlying and linearVelocity then
-		local camera = workspace.CurrentCamera
-		-- Персонаж летит вперед по направлению взгляда камеры
-		linearVelocity.VectorVelocity = camera.CFrame.LookVector * flySpeed
 	end
 end)
