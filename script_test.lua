@@ -11,19 +11,19 @@ local targetPlayer = nil
 local isCarrying = false
 local flyBodyVelocity = nil
 local flyBodyGyro = nil
+local heartBeatConnection = nil
 
 local FLY_SPEED = 60
-local PICKUP_RADIUS = 25
+local PICKUP_RADIUS = 30
 
--- Обновление персонажа при спавне
 localPlayer.CharacterAdded:Connect(function(newChar)
 	character = newChar
 	hrp = character:WaitForChild("HumanoidRootPart")
 	isCarrying = false
 	targetPlayer = nil
+	if heartBeatConnection then heartBeatConnection:Disconnect() end
 end)
 
--- Поиск ближайшего игрока
 local function getClosestPlayer()
 	local closestPlayer = nil
 	local shortestDistance = PICKUP_RADIUS
@@ -41,18 +41,17 @@ local function getClosestPlayer()
 	return closestPlayer
 end
 
--- Включение/Выключение полета
 local function setFly(enabled)
 	if enabled then
 		if not flyBodyVelocity then
 			flyBodyVelocity = Instance.new("BodyVelocity")
-			flyBodyVelocity.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+			flyBodyVelocity.MaxForce = Vector3.new(1e6, 1e6, 1e6)
 			flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
 			flyBodyVelocity.Parent = hrp
 		end
 		if not flyBodyGyro then
 			flyBodyGyro = Instance.new("BodyGyro")
-			flyBodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+			flyBodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
 			flyBodyGyro.CFrame = hrp.CFrame
 			flyBodyGyro.Parent = hrp
 		end
@@ -62,11 +61,11 @@ local function setFly(enabled)
 	end
 end
 
--- Создание GUI элементов
+-- GUI
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "RescueGui"
 screenGui.ResetOnSpawn = false
--- Защита от обнаружения и удаление старого GUI
+
 if gethui then
 	screenGui.Parent = gethui()
 elseif CoreGui:FindFirstChild("RescueGui") then
@@ -76,7 +75,6 @@ else
 	screenGui.Parent = CoreGui
 end
 
--- Кнопка 1: Установка базы
 local btnSetBase = Instance.new("TextButton")
 btnSetBase.Size = UDim2.new(0, 140, 0, 45)
 btnSetBase.Position = UDim2.new(0.02, 0, 0.4, 0)
@@ -87,7 +85,6 @@ btnSetBase.Font = Enum.Font.SourceSansBold
 btnSetBase.Text = "📍 Задать базу"
 btnSetBase.Parent = screenGui
 
--- Кнопка 2: Спасти / Отпустить
 local btnRescue = Instance.new("TextButton")
 btnRescue.Size = UDim2.new(0, 140, 0, 45)
 btnRescue.Position = UDim2.new(0.02, 0, 0.5, 0)
@@ -98,11 +95,9 @@ btnRescue.Font = Enum.Font.SourceSansBold
 btnRescue.Text = "🆘 Спасти игрока"
 btnRescue.Parent = screenGui
 
--- Скругление углов
 local corner1 = Instance.new("UICorner") corner1.CornerRadius = UDim.new(0, 8) corner1.Parent = btnSetBase
 local corner2 = Instance.new("UICorner") corner2.CornerRadius = UDim.new(0, 8) corner2.Parent = btnRescue
 
--- Логика нажатия кнопок
 btnSetBase.MouseButton1Click:Connect(function()
 	if hrp then
 		safeZonePosition = hrp.Position
@@ -112,13 +107,21 @@ btnSetBase.MouseButton1Click:Connect(function()
 	end
 end)
 
+local function stopRescue()
+	isCarrying = false
+	targetPlayer = nil
+	setFly(false)
+	if heartBeatConnection then
+		heartBeatConnection:Disconnect()
+		heartBeatConnection = nil
+	end
+	btnRescue.Text = "🆘 Спасти игрока"
+	btnRescue.BackgroundColor3 = Color3.fromRGB(0, 150, 75)
+end
+
 btnRescue.MouseButton1Click:Connect(function()
 	if isCarrying then
-		isCarrying = false
-		targetPlayer = nil
-		setFly(false)
-		btnRescue.Text = "🆘 Спасти игрока"
-		btnRescue.BackgroundColor3 = Color3.fromRGB(0, 150, 75)
+		stopRescue()
 	else
 		if not safeZonePosition then
 			btnRescue.Text = "⚠️ Сначала задай базу!"
@@ -134,6 +137,30 @@ btnRescue.MouseButton1Click:Connect(function()
 			setFly(true)
 			btnRescue.Text = "❌ Отпустить"
 			btnRescue.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+
+			-- Использование PreRender / RenderStepped для максимальной частоты обновления позиционирования
+			heartBeatConnection = RunService.RenderStepped:Connect(function()
+				if isCarrying and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					local targetHrp = targetPlayer.Character.HumanoidRootPart
+					
+					-- Непрерывно принудительно ставим позицию и обнуляем его скорость
+					targetHrp.CFrame = hrp.CFrame * CFrame.new(0, -1, -3)
+					targetHrp.Velocity = Vector3.new(0, 0, 0)
+					
+					-- Движение к базе
+					local direction = (safeZonePosition - hrp.Position).Unit
+					local distance = (safeZonePosition - hrp.Position).Magnitude
+
+					if distance > 6 then
+						flyBodyVelocity.Velocity = direction * FLY_SPEED
+						flyBodyGyro.CFrame = CFrame.new(hrp.Position, safeZonePosition)
+					else
+						stopRescue()
+					end
+				else
+					stopRescue()
+				end
+			end)
 		else
 			btnRescue.Text = "❓ Нет никого рядом"
 			task.wait(1.5)
@@ -141,29 +168,3 @@ btnRescue.MouseButton1Click:Connect(function()
 		end
 	end
 end)
-
--- Цикл переноса
-RunService.Heartbeat:Connect(function()
-	if isCarrying and targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
-		local targetHrp = targetPlayer.Character.HumanoidRootPart
-		targetHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, -4)
-
-		if safeZonePosition then
-			local direction = (safeZonePosition - hrp.Position).Unit
-			local distance = (safeZonePosition - hrp.Position).Magnitude
-
-			if distance > 6 then
-				flyBodyVelocity.Velocity = direction * FLY_SPEED
-				flyBodyGyro.CFrame = CFrame.new(hrp.Position, safeZonePosition)
-			else
-				flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-				isCarrying = false
-				targetPlayer = nil
-				setFly(false)
-				btnRescue.Text = "🆘 Спасти игрока"
-				btnRescue.BackgroundColor3 = Color3.fromRGB(0, 150, 75)
-			end
-		end
-	end
-end)
-
