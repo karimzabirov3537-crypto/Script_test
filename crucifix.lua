@@ -1,141 +1,91 @@
---[[
-    Скрипт выдачи предмета "Crucifix" (Doors fan-game)
-    Тип: LocalScript
-    Куда положить: StarterPlayer -> StarterPlayerScripts
-
-    Добавляет кнопку на экран. По нажатию клонирует Tool "Crucifix"
-    из ReplicatedStorage (проверяет несколько возможных путей) и
-    кладёт его в инвентарь (Backpack) игрока.
-]]
+--// Script: Get Crucifix by button click
+--// Works in fan games of DOORS (Executor required)
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Backpack = LocalPlayer:WaitForChild("Backpack")
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+--// Creating ScreenGui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CrucifixGUI"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- =========================
--- Поиск предмета Crucifix
--- =========================
-local function findCrucifixTemplate()
-    -- Вариант 1: ItemFolder.Crucifix
-    local itemFolder = ReplicatedStorage:FindFirstChild("ItemFolder")
-    if itemFolder then
-        local found = itemFolder:FindFirstChild("Crucifix")
-        if found then
-            return found
-        end
-    end
+--// Creating TextButton
+local Button = Instance.new("TextButton")
+Button.Name = "GetCrucifixButton"
+Button.Size = UDim2.new(0, 200, 0, 50)
+Button.Position = UDim2.new(0.5, -100, 0.8, 0)  -- bottom center
+Button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+Button.Text = "Получить Крест (Crucifix)"
+Button.Font = Enum.Font.SourceSansBold
+Button.TextSize = 16
+Button.Parent = ScreenGui
 
-    -- Вариант 2: Tools.Crucifix
-    local toolsFolder = ReplicatedStorage:FindFirstChild("Tools")
-    if toolsFolder then
-        local found = toolsFolder:FindFirstChild("Crucifix")
-        if found then
-            return found
-        end
-    end
+--// Optional: adding rounded corners
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = Button
 
-    -- Вариант 3: общий рекурсивный поиск по имени во всей ReplicatedStorage
-    for _, descendant in ipairs(ReplicatedStorage:GetDescendants()) do
-        if descendant.Name == "Crucifix" and (descendant:IsA("Tool") or descendant:IsA("Model")) then
-            return descendant
-        end
-    end
-
-    return nil
-end
-
--- =========================
--- Интерфейс (кнопка)
--- =========================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "CrucifixGiverGui"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = playerGui
-
-local giveButton = Instance.new("TextButton")
-giveButton.Name = "GiveCrucifixButton"
-giveButton.Text = "Крестик"
-giveButton.Size = UDim2.new(0, 110, 0, 45)
-giveButton.Position = UDim2.new(1, -20, 1, -265)
-giveButton.AnchorPoint = Vector2.new(1, 1)
-giveButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-giveButton.BackgroundTransparency = 0.3
-giveButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-giveButton.Font = Enum.Font.GothamBold
-giveButton.TextScaled = true
-giveButton.AutoButtonColor = true
-giveButton.Parent = screenGui
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 8)
-corner.Parent = giveButton
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(255, 255, 255)
-stroke.Transparency = 0.7
-stroke.Thickness = 1.5
-stroke.Parent = giveButton
-
--- =========================
--- Небольшое сообщение об ошибке, если предмет не найден
--- =========================
-local function showMessage(text, isError)
-    local msg = Instance.new("TextLabel")
-    msg.Size = UDim2.new(0, 220, 0, 40)
-    msg.Position = UDim2.new(1, -20, 1, -320)
-    msg.AnchorPoint = Vector2.new(1, 1)
-    msg.BackgroundColor3 = isError and Color3.fromRGB(120, 30, 30) or Color3.fromRGB(30, 90, 40)
-    msg.BackgroundTransparency = 0.2
-    msg.TextColor3 = Color3.fromRGB(255, 255, 255)
-    msg.Font = Enum.Font.Gotham
-    msg.TextScaled = true
-    msg.Text = text
-    msg.Parent = screenGui
-
-    local msgCorner = Instance.new("UICorner")
-    msgCorner.CornerRadius = UDim.new(0, 8)
-    msgCorner.Parent = msg
-
-    task.delay(2.5, function()
-        msg:Destroy()
-    end)
-end
-
--- =========================
--- Логика выдачи предмета
--- =========================
+--// Function to give Crucifix
 local function giveCrucifix()
-    local template = findCrucifixTemplate()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
-    if not template then
-        warn("[CrucifixGiver] Предмет 'Crucifix' не найден в ReplicatedStorage. Проверь путь/имя объекта.")
-        showMessage("Предмет не найден", true)
+    -- Check if already has crucifix in backpack
+    local existingBackpack = Backpack:FindFirstChild("Crucifix")
+    local existingCharacter = character:FindFirstChild("Crucifix")
+
+    if existingBackpack or existingCharacter then
+        print("Crucifix already exists!")
         return
     end
 
-    local backpack = player:FindFirstChild("Backpack")
-    if not backpack then
-        warn("[CrucifixGiver] Backpack игрока не найден.")
-        return
+    -- Try to load the asset from Roblox library (common crucifix model)
+    local assetId = "rbxassetid://11498423088" -- change this ID if your fan game uses a different crucifix model
+
+    local success, result = pcall(function()
+        return game:GetObjects(assetId)
+    end)
+
+    if success and result and #result > 0 then
+        local model = result[1]
+
+        if model:IsA("Tool") then
+            model.Name = "Crucifix"
+            model.Parent = Backpack
+            print("Crucifix added to backpack!")
+        else
+            warn("Asset is not a Tool! Searching for Tool inside model...")
+            local tool = model:FindFirstChildOfClass("Tool")
+            if tool then
+                tool.Name = "Crucifix"
+                tool.Parent = Backpack
+                print("Crucifix (from model) added to backpack!")
+            else
+                warn("Could not find Tool in asset!")
+            end
+        end
+    else
+        -- If asset loading fails, create a dummy crucifix
+        warn("Failed to load asset. Creating dummy Crucifix...")
+
+        local tool = Instance.new("Tool")
+        tool.Name = "Crucifix"
+        tool.RequiresHandle = false
+        tool.Parent = Backpack
+
+        -- Create simple handle
+        local handle = Instance.new("Part")
+        handle.Name = "Handle"
+        handle.Size = Vector3.new(0.3, 1, 0.3)
+        handle.BrickColor = BrickColor.new("Dark stone grey")
+        handle.Parent = tool
+
+        print("Dummy Crucifix added!")
     end
-
-    -- Проверка, чтобы не дублировать предмет, если он уже есть в инвентаре или в руках
-    local existingInBackpack = backpack:FindFirstChild(template.Name)
-    local character = player.Character
-    local existingInHands = character and character:FindFirstChild(template.Name)
-
-    if existingInBackpack or existingInHands then
-        showMessage("Уже есть в инвентаре", false)
-        return
-    end
-
-    local clone = template:Clone()
-    clone.Parent = backpack
-
-    showMessage("Крестик получен", false)
 end
 
-giveButton.MouseButton1Click:Connect(giveCrucifix)
+--// Connect button click
+Button.MouseButton1Click:Connect(giveCrucifix)
+
+print("Script loaded! Press the button to get Crucifix.")
