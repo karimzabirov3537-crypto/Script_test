@@ -5,7 +5,7 @@
 
     Возможности:
     - Кнопка "Летать" (вкл/выкл режим полёта)
-    - Кнопка "Перевернуться" (переворачивает персонажа спиной вверх / обратно)
+    - Кнопка "Перевернуться" (переворачивает персонажа животом вниз, спиной вверх / обратно)
     - Управление стрелочками на клавиатуре (Up/Down/Left/Right)
     - Встроенный джойстик (для мобильных устройств / тач-экрана)
     - Кнопки "Вверх" и "Вниз" для вертикального перемещения
@@ -105,11 +105,12 @@ local downButton = makeButton(
 
 -- =========================
 -- Встроенный джойстик (для тач-экрана)
+-- Расположен слева от кнопок, справа внизу экрана — не мешает системному джойстику Roblox (тот слева)
 -- =========================
 local joystickFrame = Instance.new("Frame")
 joystickFrame.Name = "JoystickBase"
 joystickFrame.Size = UDim2.new(0, 130, 0, 130)
-joystickFrame.Position = UDim2.new(0, 40, 1, -170)
+joystickFrame.Position = UDim2.new(1, -270, 1, -170)
 joystickFrame.AnchorPoint = Vector2.new(0, 1)
 joystickFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 joystickFrame.BackgroundTransparency = 0.85
@@ -154,7 +155,9 @@ local function updateJoystickInput(inputPosition)
     local normX = direction.X / joyRadius
     local normY = direction.Y / joyRadius
 
-    moveInput = Vector3.new(normX, moveInput.Y, -normY)
+    -- normY: вниз на экране = положительный, вверх = отрицательный.
+    -- Джойстик вперёд (вверх) должен давать движение вперёд, поэтому используем normY напрямую (без инверсии)
+    moveInput = Vector3.new(normX, moveInput.Y, normY)
 end
 
 local function resetJoystick()
@@ -298,6 +301,7 @@ local function startFlying()
         local camera = workspace.CurrentCamera
         local camCFrame = camera.CFrame
 
+        -- Направление движения относительно камеры (без наклона по вертикали)
         local flatLook = Vector3.new(camCFrame.LookVector.X, 0, camCFrame.LookVector.Z)
         if flatLook.Magnitude > 0 then
             flatLook = flatLook.Unit
@@ -317,23 +321,31 @@ local function startFlying()
 
         bodyVelocity.Velocity = (finalDirection * FLY_SPEED) + (verticalMove * VERTICAL_SPEED)
 
+        -- Базовая ориентация: смотрим в сторону движения (или сохраняем текущий взгляд, если стоим на месте)
+        local lookDirection
         if horizontalMove.Magnitude > 0.05 then
-            local lookTarget = rootPart.Position + horizontalMove
-            local upVector = flipped and Vector3.new(0, -1, 0) or Vector3.new(0, 1, 0)
-            local ok, result = pcall(function()
-                return CFrame.lookAt(rootPart.Position, lookTarget, upVector)
-            end)
-            if ok then
-                bodyGyro.CFrame = result
-            end
+            lookDirection = horizontalMove
         else
-            local currentCFrame = bodyGyro.CFrame
-            local upVector = flipped and Vector3.new(0, -1, 0) or Vector3.new(0, 1, 0)
-            local ok, result = pcall(function()
-                return CFrame.lookAt(rootPart.Position, rootPart.Position + currentCFrame.LookVector, upVector)
-            end)
-            if ok then
-                bodyGyro.CFrame = result
+            lookDirection = bodyGyro.CFrame.LookVector
+            local flatCurrentLook = Vector3.new(lookDirection.X, 0, lookDirection.Z)
+            if flatCurrentLook.Magnitude > 0.001 then
+                lookDirection = flatCurrentLook.Unit
+            else
+                lookDirection = flatLook
+            end
+        end
+
+        local ok, baseCFrame = pcall(function()
+            return CFrame.lookAt(rootPart.Position, rootPart.Position + lookDirection, Vector3.new(0, 1, 0))
+        end)
+
+        if ok then
+            if flipped then
+                -- Наклон на 180° вокруг оси X (Right): переводит персонажа в положение
+                -- лицом/животом вниз к земле, спиной вверх, сохраняя направление движения
+                bodyGyro.CFrame = baseCFrame * CFrame.Angles(math.pi, 0, 0)
+            else
+                bodyGyro.CFrame = baseCFrame
             end
         end
     end)
@@ -376,7 +388,7 @@ flyButton.MouseButton1Click:Connect(function()
 end)
 
 -- =========================
--- Переворот (спиной вверх)
+-- Переворот (животом вниз, спиной вверх)
 -- =========================
 flipButton.MouseButton1Click:Connect(function()
     flipped = not flipped
